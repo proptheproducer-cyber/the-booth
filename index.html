@@ -256,6 +256,30 @@
   }
   .toast.show{opacity:1}
 
+  .later{border:1px dashed var(--line);border-radius:var(--r);padding:0 14px}
+  .later[open]{padding-bottom:14px}
+  .later>summary{
+    cursor:pointer;list-style:none;padding:11px 0;
+    font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink-faint);
+  }
+  .later>summary::-webkit-details-marker{display:none}
+  .later>summary::before{content:"+ ";color:var(--gold)}
+  .later[open]>summary::before{content:"\2212 "}
+  .later>summary:hover{color:var(--ink-soft)}
+  .later .card{border:0;background:transparent;padding:0 0 14px}
+
+  body.mini .card{display:none}
+  body.mini .later{display:none}
+  body.mini .wrap{padding-block:10px 14px;gap:10px;max-width:none}
+  body.mini header .engine{display:none}
+  body.mini .deck{padding:12px;gap:12px}
+  body.mini .rec{width:52px;height:52px}
+  body.mini .meter{height:20px}
+  body.mini #script{min-height:130px;font-size:15px;padding:12px}
+  body.mini .caption{padding:8px 12px;min-height:34px;font-size:14px}
+  body.mini .hint{display:none}
+
   @media (max-width:560px){
     .deck{flex-wrap:wrap;gap:12px}
     .rec{width:56px;height:56px}
@@ -270,6 +294,8 @@
   <header>
     <div class="mark">The&nbsp;<span>Booth</span></div>
     <div class="engine" id="engine">checking engine</div>
+    <button class="chip" id="compact" aria-pressed="false">Compact</button>
+    <button class="chip" id="popout">Pop out</button>
   </header>
 
   <div id="notice" class="notice" hidden></div>
@@ -341,6 +367,9 @@
     <p class="help" id="voiceHelp"></p>
   </div>
 
+  <details class="later">
+    <summary>Paid extras, switched off</summary>
+
   <div class="card">
     <h2>Meeting</h2>
     <div class="row">
@@ -370,6 +399,8 @@
     installed. You pay OpenAI directly for what you use.</p>
   </div>
 
+  </details>
+
   <div class="card">
     <h2>Transcript</h2>
     <div class="row">
@@ -392,7 +423,11 @@
 (function(){
   "use strict";
 
-  var $ = function(id){ return document.getElementById(id); };
+  var pipWin=null;
+  var $ = function(id){
+    return document.getElementById(id) ||
+           ((pipWin && !pipWin.closed) ? pipWin.document.getElementById(id) : null);
+  };
   var recBtn=$("rec"), caption=$("caption"), script=$("script"), timerEl=$("timer"),
       wordsEl=$("words"), charsEl=$("chars"), statusEl=$("status"), meterEl=$("meter"),
       noticeEl=$("notice"), engineEl=$("engine"), toastEl=$("toast"), hintEl=$("hint");
@@ -426,7 +461,7 @@
 
   function diag(ev){
     trace.push(ev); if(trace.length>6) trace.shift();
-    var d=document.getElementById("diag");
+    var d=$("diag");
     if(d) d.textContent=trace.join(" \u203a ");
   }
   function noWordsHelp(){
@@ -1221,6 +1256,91 @@
   }
 
   keyState();
+
+  /* ---------------- compact mode and the floating window ---------------- */
+  var MINI_LS="booth.mini";
+  function setMini(on, remember){
+    document.body.classList.toggle("mini", !!on);
+    var b=$("compact"); if(b) b.setAttribute("aria-pressed", String(!!on));
+    if(remember){ try{ localStorage.setItem(MINI_LS, on?"1":"0"); }catch(e){} }
+  }
+  (function(){
+    var on=false;
+    if(/(^|[#&])mini\b/.test(location.hash)) on=true;
+    else { try{ on = localStorage.getItem(MINI_LS)==="1"; }catch(e){} }
+    setMini(on,false);
+  })();
+  $("compact").addEventListener("click", function(){
+    setMini(!document.body.classList.contains("mini"), true);
+  });
+
+  function mirrorStyles(win){
+    Array.prototype.forEach.call(document.styleSheets, function(sheet){
+      try{
+        var css=Array.prototype.map.call(sheet.cssRules,function(r){return r.cssText;}).join("\n");
+        var st=win.document.createElement("style"); st.textContent=css;
+        win.document.head.appendChild(st);
+      }catch(err){
+        if(sheet.href){
+          var l=win.document.createElement("link");
+          l.rel="stylesheet"; l.href=sheet.href;
+          win.document.head.appendChild(l);
+        }
+      }
+    });
+  }
+
+  $("popout").addEventListener("click", async function(){
+    var host=document.querySelector(".console");
+    if(!host) return;
+
+    if(window.documentPictureInPicture && !pipWin){
+      try{
+        pipWin = await window.documentPictureInPicture.requestWindow({width:400, height:470});
+        mirrorStyles(pipWin);
+        var theme=document.documentElement.getAttribute("data-theme");
+        if(theme) pipWin.document.documentElement.setAttribute("data-theme", theme);
+        pipWin.document.body.classList.add("mini");
+        pipWin.document.body.style.background="var(--ground)";
+        pipWin.document.body.style.padding="10px";
+
+        var slot=document.createElement("div");
+        slot.id="pipSlot";
+        slot.innerHTML='<p class="help" style="padding:14px 0">The pad is in the floating window. '+
+                       'Close that window and it comes back here.</p>';
+        host.parentNode.insertBefore(slot, host);
+        pipWin.document.body.appendChild(host);
+
+        // the spacebar shortcut has to work in the floating window too
+        pipWin.document.addEventListener("keydown", function(e){
+          if(e.code!=="Space"||e.repeat) return;
+          var t=e.target;
+          if(t && (t.tagName==="TEXTAREA"||t.tagName==="INPUT"||t.isContentEditable)) return;
+          e.preventDefault();
+          if(!locked && !recording && !wantOn){ held=true; startRec(false); }
+        });
+        pipWin.document.addEventListener("keyup", function(e){
+          if(e.code==="Space" && held){ held=false; if(!locked) stopRec(); }
+        });
+
+        pipWin.addEventListener("pagehide", function(){
+          if(slot.parentNode) slot.parentNode.insertBefore(host, slot);
+          if(slot.parentNode) slot.parentNode.removeChild(slot);
+          pipWin=null;
+          $("popout").textContent="Pop out";
+        });
+        this.textContent="Bring back";
+        return;
+      }catch(err){ pipWin=null; }
+    }
+
+    if(pipWin && !pipWin.closed){ pipWin.close(); return; }
+
+    var w=window.open(location.href.split("#")[0]+"#mini","booth-mini",
+                      "width=420,height=560,menubar=no,toolbar=no,location=no,status=no");
+    if(!w) toast("The browser blocked the window. Allow pop-ups for this page.");
+    else toast("Opened in its own window");
+  });
 
   /* ---------------- keyboard shortcuts ---------------- */
   document.addEventListener("keydown", function(e){
