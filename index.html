@@ -231,6 +231,20 @@
   #log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px;max-height:300px;overflow-y:auto}
   #log li{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)}
   #log li:first-child{border-top:0}
+  #vList{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+  #vList li{
+    display:inline-flex;align-items:center;gap:7px;
+    border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 11px;
+    font-size:12px;color:var(--ink);
+  }
+  #vList li span{font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+  #vProposals{display:flex;flex-direction:column;gap:6px}
+  #vProposals label{
+    display:flex;align-items:center;gap:9px;font-size:13px;
+    border:1px solid var(--gold);border-radius:7px;padding:7px 11px;
+  }
+  #vProposals label b{font-weight:600}
+  #vProposals input{accent-color:var(--gold);width:15px;height:15px;flex:0 0 auto}
   .log-t{flex:1 1 auto;min-width:0;text-align:left;font-size:13px;line-height:1.45;color:var(--ink)}
   .log-t small{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin-top:3px;letter-spacing:.03em}
   .log-x{flex:0 0 auto;color:var(--ink-faint);font-size:16px;line-height:1;padding:2px 5px;border-radius:4px}
@@ -402,6 +416,30 @@
   </details>
 
   <div class="card">
+    <h2>Vocabulary</h2>
+    <div class="row">
+      <input id="vTerm" placeholder="A name it keeps mangling" style="flex:1 1 200px;min-width:0" spellcheck="false">
+      <button class="btn" id="vAddTerm">Add name</button>
+    </div>
+    <div class="row">
+      <input id="vFrom" placeholder="What it hears" style="flex:1 1 140px;min-width:0" spellcheck="false">
+      <span class="label">becomes</span>
+      <input id="vTo" placeholder="What you meant" style="flex:1 1 140px;min-width:0" spellcheck="false">
+      <button class="btn" id="vAddFix">Add fix</button>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="vLearn">Learn from my edits</button>
+      <span class="label" id="vNote"></span>
+    </div>
+    <div id="vProposals"></div>
+    <ul id="vList"></ul>
+    <p class="help">Dictate, then correct the mistakes in the pad yourself, then press <b>Learn from
+    my edits</b>. It works out what it got wrong and offers to remember it. Everything you approve is
+    applied automatically from then on, so the same name never has to be fixed twice. Names you add
+    also get their capitals right. This is stored on this device only.</p>
+  </div>
+
+  <div class="card">
     <h2>Transcript</h2>
     <div class="row">
       <button class="btn" id="copy">Copy</button>
@@ -544,6 +582,7 @@
     }
     t = t.replace(/([.!?…]\s+)([a-z])/g, function(m,a,b){ return a+b.toUpperCase(); });
     t = t.replace(/\bi\b/g,"I");
+    t = applyVocab(t);
     script.value = cur + sep + t;
     script.scrollTop = script.scrollHeight;
     counts();
@@ -621,6 +660,7 @@
     caption.innerHTML='<span class="idle">Ready</span>';
     if(!/blocked|No mic|Error/.test(statusEl.textContent)) statusEl.textContent="Idle";
     for(var i=0;i<BARS;i++){ bars[i].style.height="12%"; bars[i].style.background="var(--line)"; }
+    lastDictated = script.value;
     if($("autocopy").checked && script.value.trim()) doCopy(true);
   }
 
@@ -769,6 +809,7 @@
     x=x.replace(/\n{3,}/g,"\n\n");
     x=x.replace(/(^|[.!?…]\s+|\n[ \t]*)([a-z])/g,function(m,a,b){ return a+b.toUpperCase(); });
     x=x.replace(/\bi\b/g,"I");
+    x=applyVocab(x);
     x=x.replace(/[ \t]+$/gm,"").trim();
     if(x && !/[.!?…"')\]]$/.test(x)) x+=".";
     return x;
@@ -1256,6 +1297,152 @@
   }
 
   keyState();
+
+  /* ---------------- vocabulary: the app learns your words, not the engine ---------------- */
+  var V_LS="booth.vocab", vocab={terms:[], fixes:[]}, lastDictated="";
+  try{
+    var raw=JSON.parse(localStorage.getItem(V_LS)||"null");
+    if(raw && typeof raw==="object"){
+      vocab.terms = Array.isArray(raw.terms)? raw.terms.filter(function(t){return typeof t==="string";}) : [];
+      vocab.fixes = Array.isArray(raw.fixes)? raw.fixes.filter(function(f){return f&&f.from&&f.to;}) : [];
+    }
+  }catch(e){}
+  function vSave(){ try{ localStorage.setItem(V_LS, JSON.stringify(vocab)); }catch(e){} }
+
+  function esc(x){ return x.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
+
+  // exact, word-boundaried, longest phrases first so "see em see" beats "see"
+  function applyVocab(text){
+    if(!text) return text;
+    var fixes = vocab.fixes.slice().sort(function(a,b){ return b.from.length-a.from.length; });
+    fixes.forEach(function(f){
+      text = text.replace(new RegExp("\\b"+esc(f.from)+"\\b","gi"), f.to);
+    });
+    vocab.terms.forEach(function(t){
+      text = text.replace(new RegExp("\\b"+esc(t)+"\\b","gi"), t);   // fix the capitals
+    });
+    return text;
+  }
+
+  function vRender(){
+    var ul=$("vList"); if(!ul) return;
+    ul.innerHTML="";
+    var rows = vocab.terms.map(function(t){ return {label:t, kind:"term", key:t}; })
+      .concat(vocab.fixes.map(function(f){ return {label:f.from+" \u2192 "+f.to, kind:"fix", key:f.from}; }));
+    if(!rows.length){
+      var li=document.createElement("li");
+      li.style.border="0"; li.style.padding="0";
+      li.innerHTML='<span>Nothing learned yet.</span>';
+      ul.appendChild(li); return;
+    }
+    rows.forEach(function(r){
+      var li=document.createElement("li");
+      var s1=document.createElement("span"); s1.textContent=r.kind==="term"?"name":"fix";
+      var t1=document.createTextNode(r.label);
+      var x=document.createElement("button");
+      x.className="log-x"; x.textContent="\u00d7"; x.setAttribute("aria-label","Remove "+r.label);
+      x.addEventListener("click", function(){
+        if(r.kind==="term") vocab.terms=vocab.terms.filter(function(t){ return t!==r.key; });
+        else vocab.fixes=vocab.fixes.filter(function(f){ return f.from!==r.key; });
+        vSave(); vRender();
+      });
+      li.appendChild(s1); li.appendChild(t1); li.appendChild(x);
+      ul.appendChild(li);
+    });
+  }
+
+  $("vAddTerm").addEventListener("click", function(){
+    var t=$("vTerm").value.trim();
+    if(!t) return;
+    if(vocab.terms.indexOf(t)<0) vocab.terms.push(t);
+    $("vTerm").value=""; vSave(); vRender();
+    $("vNote").textContent="Added";
+  });
+  $("vAddFix").addEventListener("click", function(){
+    var f=$("vFrom").value.trim(), t=$("vTo").value.trim();
+    if(!f||!t) return;
+    vocab.fixes = vocab.fixes.filter(function(x){ return x.from.toLowerCase()!==f.toLowerCase(); });
+    vocab.fixes.push({from:f, to:t});
+    $("vFrom").value=""; $("vTo").value=""; vSave(); vRender();
+    $("vNote").textContent="Added";
+  });
+
+  // word-level diff: what did he change after the engine wrote it?
+  function wordDiff(aTxt,bTxt){
+    var a=aTxt.trim().split(/\s+/), b=bTxt.trim().split(/\s+/);
+    if(!a.length||!b.length) return [];
+    var n=a.length, m=b.length;
+    if(n*m > 500000) return [];                       // too big to align, skip
+    var L=[]; for(var i=0;i<=n;i++) L.push(new Uint32Array(m+1));
+    var norm=function(w){ return w.toLowerCase().replace(/[^a-z0-9']/g,""); };
+    for(i=n-1;i>=0;i--) for(var j=m-1;j>=0;j--)
+      L[i][j] = norm(a[i])===norm(b[j]) ? L[i+1][j+1]+1 : Math.max(L[i+1][j], L[i][j+1]);
+    var out=[], delRun=[], addRun=[];
+    i=0; j=0;
+    var flush=function(){
+      if(delRun.length && addRun.length && delRun.length<=4 && addRun.length<=4){
+        var from=delRun.join(" "), to=addRun.join(" ");
+        var key=function(str){ return str.trim().split(/\s+/).map(norm).join(" "); };
+        if(key(from)!==key(to) && from.length>1 && to.length>1) out.push({from:from,to:to});
+      }
+      delRun=[]; addRun=[];
+    };
+    while(i<n && j<m){
+      if(norm(a[i])===norm(b[j])){ flush(); i++; j++; }
+      else if(L[i+1][j] >= L[i][j+1]){ delRun.push(a[i++]); }
+      else { addRun.push(b[j++]); }
+    }
+    while(i<n) delRun.push(a[i++]);
+    while(j<m) addRun.push(b[j++]);
+    flush();
+    return out.slice(0,8);
+  }
+
+  $("vLearn").addEventListener("click", function(){
+    var box=$("vProposals"); box.innerHTML="";
+    if(!lastDictated.trim()){
+      $("vNote").textContent="Dictate something first, then correct it, then press this";
+      return;
+    }
+    var pairs=wordDiff(lastDictated, script.value);
+    var clean=(/[.,!?;:]$/);
+    pairs=pairs.filter(function(pr){
+      return pr.from.replace(clean,"").toLowerCase() !== pr.to.replace(clean,"").toLowerCase();
+    });
+    if(!pairs.length){
+      $("vNote").textContent="No word changes found since the last dictation";
+      return;
+    }
+    $("vNote").textContent="Tick the ones worth remembering";
+    pairs.forEach(function(pr,ix){
+      var lab=document.createElement("label");
+      var cb=document.createElement("input"); cb.type="checkbox"; cb.checked=true; cb.dataset.ix=String(ix);
+      var sp=document.createElement("span");
+      var risky = !/\s/.test(pr.from) && pr.from.replace(/[^a-z0-9']/gi,"").length<=5;
+      sp.innerHTML="heard <b>"+pr.from.replace(/</g,"&lt;")+"</b>, you meant <b>"+pr.to.replace(/</g,"&lt;")+"</b>"+
+        (risky ? ' <span style="color:var(--burgundy)">(short word, will change other sentences too)</span>' : "");
+      if(risky) cb.checked=false;
+      lab.appendChild(cb); lab.appendChild(sp);
+      box.appendChild(lab);
+    });
+    var save=document.createElement("button");
+    save.className="btn primary"; save.textContent="Remember these";
+    save.addEventListener("click", function(){
+      var n=0;
+      Array.prototype.forEach.call(box.querySelectorAll("input[type=checkbox]"), function(cb){
+        if(!cb.checked) return;
+        var pr=pairs[Number(cb.dataset.ix)];
+        vocab.fixes = vocab.fixes.filter(function(x){ return x.from.toLowerCase()!==pr.from.toLowerCase(); });
+        vocab.fixes.push({from:pr.from, to:pr.to}); n++;
+      });
+      vSave(); vRender(); box.innerHTML="";
+      $("vNote").textContent = n+" remembered, applied from now on";
+      lastDictated=script.value;
+    });
+    box.appendChild(save);
+  });
+
+  vRender();
 
   /* ---------------- compact mode and the floating window ---------------- */
   var MINI_LS="booth.mini";
