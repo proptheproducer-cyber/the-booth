@@ -384,17 +384,32 @@
     if(d) d.textContent=trace.join(" \u203a ");
   }
   function noWordsHelp(){
-    notice("<b>The microphone is open but no words are coming back.</b> " +
-      "On iPhone this feature runs on Apple's own dictation, and it stays silent when that is switched off. " +
-      "Open Settings, then General, then Keyboard, and turn on <b>Enable Dictation</b>. " +
-      "Come back to this page, reload it, and try again.");
+    var why;
+    if(isSamsung)      why="You are in the Samsung Internet browser, which opens the microphone but ships no speech engine behind it, so no words ever come back. <b>Open this page in Chrome instead.</b>";
+    else if(isFirefox) why="Firefox does not include a speech engine. <b>Open this page in Chrome or Edge.</b>";
+    else if(isAndroid) why="Android runs this through Google's speech service. Check that the <b>Google app</b> is installed and enabled, then reload this page. If you are not in Chrome, switch to Chrome.";
+    else if(isIOS)     why="iPhone runs this through Apple's dictation. Open Settings, General, Keyboard and turn on <b>Enable Dictation</b>, then reload.";
+    else               why="This browser opened the microphone but returned no words. <b>Try Chrome or Edge.</b>";
+    notice("<b>The microphone is open but no words are coming back.</b> " + why);
     statusEl.textContent="No words returned";
   }
-  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  var UA = navigator.userAgent;
+  var isIOS = /iPad|iPhone|iPod/.test(UA) ||
               (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+  var isAndroid  = /Android/i.test(UA);
+  var isSamsung  = /SamsungBrowser/i.test(UA);
+  var isFirefox  = /Firefox/i.test(UA);
+  var isMobile   = isIOS || isAndroid ||
+                   ((navigator.maxTouchPoints||0)>0 && !window.matchMedia("(pointer:fine)").matches);
 
   var touchOnly = (navigator.maxTouchPoints||0) > 0 && !window.matchMedia("(pointer:fine)").matches;
   if(touchOnly) hintEl.innerHTML="Tap the mic to start, tap it again to stop";
+
+  if(SR && (isSamsung || isFirefox)){
+    notice((isSamsung ? "<b>Samsung Internet cannot do speech to text.</b> It opens the microphone and returns nothing, which is exactly the failure you are seeing."
+                      : "<b>Firefox cannot do speech to text.</b> It has no speech engine.") +
+           " Open this page in <b>Chrome</b> and it will work. Everything else on this page works here.");
+  }
 
   if(!SR){
     engineEl.textContent="dictation unsupported in this browser";
@@ -402,7 +417,8 @@
     hintEl.textContent="";
     notice("<b>This browser can't do speech to text.</b> The Web Speech API is missing here. Open this page in Chrome or Edge on desktop or Android, or Safari on iOS 14.5 and up. Read back and rewriting still work everywhere.");
   } else {
-    engineEl.textContent="web speech · "+(navigator.language||"en-US");
+    var br = isSamsung?"samsung internet":isFirefox?"firefox":/Edg\//.test(UA)?"edge":/Chrome\//.test(UA)?"chrome":/Safari/.test(UA)?"safari":"browser";
+    engineEl.textContent="web speech · "+br+" · "+(isAndroid?"android":isIOS?"ios":"desktop");
   }
 
   function fmt(ms){
@@ -436,7 +452,7 @@
 
   function buildRec(){
     var r=new SR();
-    r.continuous=!isIOS;          // Safari returns nothing at all when continuous is on
+    r.continuous=!isMobile;       // phone engines return nothing in continuous mode
     r.interimResults=true;
     r.lang=navigator.language||"en-US";
     r.maxAlternatives=1;
@@ -515,7 +531,7 @@
     locked=!!lock; wantOn=true;
     restarts=0; gotResult=false; trace=[];
     clearTimeout(watchdog);
-    watchdog=setTimeout(function(){ if(wantOn && !gotResult) noWordsHelp(); }, 9000);
+    watchdog=setTimeout(function(){ if(wantOn && !gotResult) noWordsHelp(); }, 7000);
     rec=buildRec();
     startTimer();
     startMeter();
@@ -531,7 +547,7 @@
   /* ---------------- level meter ---------------- */
   var ac=null, stream=null, analyser=null, raf=null, data=null;
   function startMeter(){
-    if(isIOS) return;                      // iOS gives the mic to one consumer; leave it to recognition
+    if(isMobile) return;                   // a phone gives the mic to ONE consumer; recognition gets it
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
     navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){
       if(!wantOn){ s.getTracks().forEach(function(t){t.stop();}); return; }
