@@ -331,6 +331,7 @@
       <button class="btn" id="pause" disabled>Pause</button>
       <button class="btn" id="stopSpeak" disabled>Stop</button>
       <select id="voice" aria-label="Voice"></select>
+      <button class="btn" id="revoice" title="Re-read the voices installed on this device">Refresh voices</button>
       <label class="tog">Speed <input type="range" id="rate" min="0.6" max="1.8" step="0.05" value="1"><span class="label" id="rateOut">1.00x</span></label>
     </div>
     <p class="help" id="voiceHelp"></p>
@@ -794,9 +795,31 @@
     if(isIOS || mac)   how="The voices here are whatever your Apple device has installed, and the ones it ships with are the thin robotic ones. Open <b>Settings, Accessibility, Spoken Content, Voices</b> (System Settings on the Mac) and download an <b>Enhanced</b> or <b>Premium</b> English voice. Come back, reload this page, and it appears in the list above marked <b>better</b>.";
     else if(isAndroid) how="Android reads through Google Text to Speech. Open <b>Settings, General management, Text-to-speech</b>, make sure the <b>Google</b> engine is selected, and install its voice data. Reload this page afterwards.";
     else               how="In Chrome on a computer the <b>Google</b> voices are the good ones and they load from the network. If you see none, check that you are in Chrome and online.";
-    el.innerHTML = (good ? "" : "<b>No high quality voice found on this device.</b> ") + how;
+    var chrome = /Chrome\//.test(UA) && !/Edg\//.test(UA);
+    var mac2 = /Macintosh/.test(UA) && !isIOS;
+    var caveat = "";
+    if((mac2 || isIOS) && chrome)
+      caveat = " <b>Note:</b> Chrome does not always expose voices you download from Apple. If a voice you installed is missing here, quit the browser completely and reopen it, and if it still will not appear, open this page in <b>Safari</b>, which always sees them.";
+    else if(mac2 || isIOS)
+      caveat = " If a voice you just installed is missing, quit the browser completely (not just the tab) and reopen it, then press Refresh voices.";
+    el.innerHTML = "<b>" + voices.length + " voices on this device.</b> " +
+                   (good ? "" : "None of them are high quality ones. ") + how + caveat;
   }
-  if(synth){ loadVoices(); voiceAdvice(); synth.addEventListener("voiceschanged", function(){ loadVoices(); voiceAdvice(); }); setTimeout(function(){ loadVoices(); voiceAdvice(); },400); }
+  function refreshVoices(announce){
+    if(!synth) return;
+    var was=voices.length;
+    loadVoices(); voiceAdvice();
+    if(announce){
+      toast(voices.length===was ? voices.length+" voices, nothing new found" : "Found "+(voices.length-was)+" new");
+    }
+  }
+  if(synth){
+    refreshVoices(false);
+    synth.addEventListener("voiceschanged", function(){ refreshVoices(false); });
+    [300,900,1800,3500].forEach(function(ms){ setTimeout(function(){ refreshVoices(false); }, ms); });
+    document.addEventListener("visibilitychange", function(){ if(!document.hidden) refreshVoices(false); });
+  }
+  $("revoice").addEventListener("click", function(){ refreshVoices(true); });
   voiceSel.addEventListener("change", function(){ try{ localStorage.setItem("booth.voice", voiceSel.value); }catch(e){} });
 
   rateEl.addEventListener("input", function(){
