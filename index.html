@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0E1524" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F4EFE4" media="(prefers-color-scheme: light)">
+<title>The Booth</title>
+<style>
+  html{color-scheme:light dark}
+  :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  body{margin:0;font:14px system-ui,sans-serif}
+  img{max-width:100%}
+  [hidden]{display:none!important}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  :root{
+    --ink:#1B202A;        /* charcoal */
+    --ink-soft:#5A6070;
+    --ink-faint:#8C92A0;
+    --ground:#F4EFE4;     /* warm ivory */
+    --panel:#FBF7EF;
+    --panel-2:#EDE6D8;
+    --line:#D9D0BE;
+    --navy:#16203A;       /* midnight navy */
+    --gold:#9A7B33;       /* muted gold, darkened for ivory ground */
+    --gold-soft:#C0A05C;
+    --burgundy:#7A2436;   /* deep burgundy */
+    --on-navy:#F4EFE4;
+    --shadow:0 1px 0 rgba(27,32,42,.06), 0 8px 24px -16px rgba(22,32,58,.35);
+    --r:10px;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#EDE6D8;
+      --ink-soft:#A8AEBE;
+      --ink-faint:#6E7688;
+      --ground:#0E1524;
+      --panel:#161E31;
+      --panel-2:#1E2739;
+      --line:#2A3449;
+      --navy:#0A1020;
+      --gold:#C0A05C;
+      --gold-soft:#D4BA80;
+      --burgundy:#A33349;
+      --on-navy:#F4EFE4;
+      --shadow:0 1px 0 rgba(0,0,0,.3), 0 10px 30px -18px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#EDE6D8;
+    --ink-soft:#A8AEBE;
+    --ink-faint:#6E7688;
+    --ground:#0E1524;
+    --panel:#161E31;
+    --panel-2:#1E2739;
+    --line:#2A3449;
+    --navy:#0A1020;
+    --gold:#C0A05C;
+    --gold-soft:#D4BA80;
+    --burgundy:#A33349;
+    --on-navy:#F4EFE4;
+    --shadow:0 1px 0 rgba(0,0,0,.3), 0 10px 30px -18px rgba(0,0,0,.8);
+  }
+
+  html,body{height:100%}
+  body{
+    background:var(--ground);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  *{box-sizing:border-box}
+  button,input,select,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;background:none;border:0}
+  :focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:4px}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+  .wrap{
+    max-width:920px;margin:0 auto;
+    padding-inline:16px;padding-block:18px 28px;
+    display:flex;flex-direction:column;gap:14px;
+    min-height:100%;
+  }
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  .mark{
+    font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+    font-size:15px;color:var(--ink);
+  }
+  .mark span{color:var(--gold)}
+  .engine{
+    font-family:var(--mono);font-size:11px;color:var(--ink-faint);
+    letter-spacing:.04em;margin-left:auto;text-align:right;
+  }
+
+  /* ---------- console ---------- */
+  .console{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);overflow:hidden;
+  }
+  .deck{
+    display:flex;align-items:center;gap:16px;
+    padding:16px;border-bottom:1px solid var(--line);
+    background:var(--panel-2);
+  }
+  .rec{
+    position:relative;flex:0 0 auto;
+    width:64px;height:64px;border-radius:50%;
+    background:var(--navy);color:var(--on-navy);
+    display:grid;place-items:center;
+    border:2px solid var(--navy);
+    transition:background .15s,border-color .15s,transform .1s;
+  }
+  .rec:active{transform:scale(.96)}
+  .rec svg{width:26px;height:26px;fill:currentColor}
+  .rec.live{background:var(--burgundy);border-color:var(--burgundy);color:#fff}
+  .rec.live::after{
+    content:"";position:absolute;inset:-7px;border-radius:50%;
+    border:2px solid var(--burgundy);opacity:.45;
+    animation:ping 1.6s ease-out infinite;
+  }
+  @keyframes ping{0%{transform:scale(.95);opacity:.5}100%{transform:scale(1.25);opacity:0}}
+  .rec[disabled]{opacity:.4;cursor:not-allowed}
+
+  .deck-mid{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:8px}
+  .meter{display:flex;align-items:flex-end;gap:2px;height:26px}
+  .meter i{
+    flex:1 1 0;background:var(--line);border-radius:1px;
+    height:12%;transition:height .07s linear,background .12s;
+    display:block;
+  }
+  .deck-read{
+    display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+    font-family:var(--mono);font-size:12px;color:var(--ink-faint);
+  }
+  .deck-read b{color:var(--ink-soft);font-weight:600}
+  .timer{font-size:18px;color:var(--ink);letter-spacing:.02em;font-weight:600}
+  .timer.live{color:var(--burgundy)}
+
+  .hint{font-size:12px;color:var(--ink-faint)}
+  kbd{
+    font-family:var(--mono);font-size:11px;border:1px solid var(--line);
+    border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--ink-soft);
+    background:var(--panel);
+  }
+
+  /* ---------- live caption ---------- */
+  .caption{
+    padding:10px 16px;min-height:42px;
+    border-bottom:1px solid var(--line);
+    font-size:15px;color:var(--gold);font-style:italic;
+    display:flex;align-items:center;gap:8px;
+  }
+  .caption .idle{color:var(--ink-faint);font-style:normal;font-size:12px;font-family:var(--mono)}
+
+  /* ---------- transcript ---------- */
+  #script{
+    width:100%;border:0;background:transparent;resize:vertical;
+    padding:16px;min-height:220px;font-size:17px;line-height:1.62;
+    font-family:var(--sans);
+  }
+  #script::placeholder{color:var(--ink-faint)}
+  #script:focus{outline:none}
+
+  .footbar{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:10px 16px;border-top:1px solid var(--line);background:var(--panel-2);
+    font-family:var(--mono);font-size:11px;color:var(--ink-faint);
+  }
+  .footbar .sp{margin-left:auto}
+
+  /* ---------- controls ---------- */
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .label{
+    font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-faint);
+  }
+  .btn{
+    border:1px solid var(--line);border-radius:7px;background:var(--panel);
+    padding:8px 13px;font-size:13px;font-weight:500;color:var(--ink);
+    display:inline-flex;align-items:center;gap:7px;
+    transition:border-color .12s,background .12s;
+  }
+  .btn:hover{border-color:var(--gold)}
+  .btn[disabled]{opacity:.4;cursor:not-allowed}
+  .btn[disabled]:hover{border-color:var(--line)}
+  .btn.primary{background:var(--navy);color:var(--on-navy);border-color:var(--navy)}
+  .btn.primary:hover{border-color:var(--gold)}
+  .btn.danger{color:var(--burgundy);border-color:var(--burgundy)}
+  .chip{
+    border:1px solid var(--line);border-radius:999px;background:transparent;
+    padding:5px 12px;font-size:12px;font-weight:500;color:var(--ink-soft);
+    transition:all .12s;
+  }
+  .chip:hover{border-color:var(--gold-soft);color:var(--ink)}
+  .chip[aria-pressed="true"]{
+    background:var(--gold);border-color:var(--gold);color:var(--navy);font-weight:600;
+  }
+  select,input[type=range]{
+    border:1px solid var(--line);border-radius:7px;background:var(--panel);
+    padding:7px 9px;font-size:13px;max-width:100%;
+  }
+  input[type=range]{padding:0;height:26px;accent-color:var(--gold);border:0;background:transparent;width:120px}
+  label.tog{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-soft)}
+  label.tog input{accent-color:var(--gold);width:15px;height:15px}
+
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:14px 16px;display:flex;flex-direction:column;gap:11px;
+  }
+  .card h2{
+    margin:0;font-size:11px;font-family:var(--mono);letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-faint);font-weight:600;
+  }
+
+  /* ---------- history ---------- */
+  #log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px;max-height:300px;overflow-y:auto}
+  #log li{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)}
+  #log li:first-child{border-top:0}
+  .log-t{flex:1 1 auto;min-width:0;text-align:left;font-size:13px;line-height:1.45;color:var(--ink)}
+  .log-t small{display:block;font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin-top:3px;letter-spacing:.03em}
+  .log-x{flex:0 0 auto;color:var(--ink-faint);font-size:16px;line-height:1;padding:2px 5px;border-radius:4px}
+  .log-x:hover{color:var(--burgundy)}
+  .empty{font-size:13px;color:var(--ink-faint)}
+
+  /* ---------- notices ---------- */
+  .notice{
+    border-radius:var(--r);padding:11px 14px;font-size:13px;line-height:1.5;
+    border:1px solid var(--burgundy);color:var(--ink);
+    background:color-mix(in srgb,var(--burgundy) 9%,var(--panel));
+  }
+  .notice b{color:var(--burgundy)}
+  .toast{
+    position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(18px + env(safe-area-inset-bottom,0px));
+    background:var(--navy);color:var(--on-navy);
+    padding:9px 16px;border-radius:999px;font-size:13px;font-weight:500;
+    box-shadow:0 8px 30px -10px rgba(0,0,0,.6);z-index:50;
+    opacity:0;pointer-events:none;transition:opacity .18s;
+  }
+  .toast.show{opacity:1}
+
+  @media (max-width:560px){
+    .deck{flex-wrap:wrap;gap:12px}
+    .rec{width:56px;height:56px}
+    #script{font-size:16px;min-height:180px}
+    input[type=range]{width:100px}
+  }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark">The&nbsp;<span>Booth</span></div>
+    <div class="engine" id="engine">checking engine</div>
+  </header>
+
+  <div id="notice" class="notice" hidden></div>
+
+  <div class="console">
+    <div class="deck">
+      <button class="rec" id="rec" aria-pressed="false" aria-label="Start dictation" title="Start dictation">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3.5 3.5 0 0 0 3.5-3.5v-5a3.5 3.5 0 0 0-7 0v5A3.5 3.5 0 0 0 12 14zm6-3.5a6 6 0 0 1-5 5.91V20h-2v-3.59a6 6 0 0 1-5-5.91h2a4 4 0 0 0 8 0h2z"/></svg>
+      </button>
+      <div class="deck-mid">
+        <div class="meter" id="meter" aria-hidden="true"></div>
+        <div class="deck-read">
+          <span class="timer" id="timer">0:00</span>
+          <span><b id="words">0</b> words</span>
+          <span><b id="chars">0</b> chars</span>
+          <span class="hint" id="hint">Hold <kbd>Space</kbd> to talk, or tap the mic to lock it on</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="caption" id="caption"><span class="idle">Ready</span></div>
+
+    <textarea id="script" placeholder="Speak, or paste anything here to have it read back to you." spellcheck="true"></textarea>
+
+    <div class="footbar">
+      <span id="status">Idle</span>
+      <span class="sp"></span>
+      <label class="tog"><input type="checkbox" id="autocopy" checked> Copy on stop</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Rewrite</h2>
+    <div class="row" id="modes">
+      <button class="chip" data-mode="clean" aria-pressed="true">Clean up</button>
+      <button class="chip" data-mode="notes" aria-pressed="false">Notes</button>
+      <button class="chip" data-mode="email" aria-pressed="false">Email</button>
+      <button class="chip" data-mode="message" aria-pressed="false">Text</button>
+      <button class="chip" data-mode="bars" aria-pressed="false">Bars</button>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="polish">Rewrite</button>
+      <button class="btn" id="undo" disabled>Undo rewrite</button>
+      <span class="label" id="aiNote"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Read back</h2>
+    <div class="row">
+      <button class="btn primary" id="speak">Speak</button>
+      <button class="btn" id="pause" disabled>Pause</button>
+      <button class="btn" id="stopSpeak" disabled>Stop</button>
+      <select id="voice" aria-label="Voice"></select>
+      <label class="tog">Speed <input type="range" id="rate" min="0.6" max="1.8" step="0.05" value="1"><span class="label" id="rateOut">1.00x</span></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Transcript</h2>
+    <div class="row">
+      <button class="btn" id="copy">Copy</button>
+      <button class="btn" id="save">Save to history</button>
+      <button class="btn" id="export">Download .txt</button>
+      <button class="btn danger" id="clear">Clear</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>History</h2>
+    <ul id="log"><li class="empty" style="border:0">Nothing saved yet.</li></ul>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  var $ = function(id){ return document.getElementById(id); };
+  var recBtn=$("rec"), caption=$("caption"), script=$("script"), timerEl=$("timer"),
+      wordsEl=$("words"), charsEl=$("chars"), statusEl=$("status"), meterEl=$("meter"),
+      noticeEl=$("notice"), engineEl=$("engine"), toastEl=$("toast"), hintEl=$("hint");
+
+  /* ---------------- toast ---------------- */
+  var toastTimer=null;
+  function toast(msg){
+    toastEl.textContent=msg; toastEl.classList.add("show");
+    clearTimeout(toastTimer); toastTimer=setTimeout(function(){ toastEl.classList.remove("show"); },1900);
+  }
+  function notice(html){ noticeEl.innerHTML=html; noticeEl.hidden=false; }
+
+  /* ---------------- meter bars ---------------- */
+  var BARS=30, bars=[];
+  for(var i=0;i<BARS;i++){ var b=document.createElement("i"); meterEl.appendChild(b); bars.push(b); }
+
+  /* ---------------- counts ---------------- */
+  function counts(){
+    var t=script.value.trim();
+    wordsEl.textContent = t ? t.split(/\s+/).length : 0;
+    charsEl.textContent = script.value.length;
+  }
+  script.addEventListener("input", counts);
+  counts();
+
+  /* ---------------- speech recognition ---------------- */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var rec=null, recording=false, wantOn=false, held=false, locked=false;
+  var startedAt=0, tick=null, lastError="";
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+              (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+
+  if(!SR){
+    engineEl.textContent="dictation unsupported in this browser";
+    recBtn.disabled=true;
+    hintEl.textContent="";
+    notice("<b>This browser can't do speech to text.</b> The Web Speech API is missing here. Open this page in Chrome or Edge on desktop or Android, or Safari on iOS 14.5 and up. Read back and rewriting still work everywhere.");
+  } else {
+    engineEl.textContent="web speech · "+(navigator.language||"en-US");
+  }
+
+  function fmt(ms){
+    var s=Math.floor(ms/1000);
+    return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+  }
+  function startTimer(){
+    startedAt=Date.now();
+    clearInterval(tick);
+    tick=setInterval(function(){ timerEl.textContent=fmt(Date.now()-startedAt); },250);
+  }
+  function stopTimer(){ clearInterval(tick); tick=null; }
+
+  function appendFinal(text){
+    text=text.replace(/\s+/g," ").trim();
+    if(!text) return;
+    var cur=script.value;
+    if(cur && !/\s$/.test(cur)){
+      // continue the sentence unless the last chunk ended it
+      cur += /[.!?…]["')\]]?$/.test(cur.trim()) ? " " : " ";
+    }
+    if(cur && /[.!?…]["')\]]?\s*$/.test(cur)){
+      text = text.charAt(0).toUpperCase()+text.slice(1);
+    } else if(!cur){
+      text = text.charAt(0).toUpperCase()+text.slice(1);
+    }
+    script.value = cur + text;
+    script.scrollTop = script.scrollHeight;
+    counts();
+  }
+
+  function buildRec(){
+    var r=new SR();
+    r.continuous=true;
+    r.interimResults=true;
+    r.lang=navigator.language||"en-US";
+    r.maxAlternatives=1;
+
+    r.onstart=function(){
+      recording=true; lastError="";
+      recBtn.classList.add("live"); recBtn.setAttribute("aria-pressed","true");
+      timerEl.classList.add("live");
+      statusEl.textContent = locked ? "Recording (locked)" : "Recording";
+      caption.innerHTML='<span class="idle">Listening…</span>';
+    };
+
+    r.onresult=function(e){
+      var interim="";
+      for(var i=e.resultIndex;i<e.results.length;i++){
+        var res=e.results[i];
+        if(res.isFinal) appendFinal(res[0].transcript);
+        else interim += res[0].transcript;
+      }
+      if(interim.trim()) caption.textContent=interim.trim();
+      else if(recording) caption.innerHTML='<span class="idle">Listening…</span>';
+    };
+
+    r.onerror=function(e){
+      lastError=e.error||"unknown";
+      if(lastError==="no-speech" || lastError==="aborted") return; // routine, onend restarts
+      if(lastError==="not-allowed" || lastError==="service-not-allowed"){
+        wantOn=false; locked=false;
+        notice("<b>Microphone blocked.</b> The browser refused mic access to this page. Allow the microphone in the address-bar permission menu and reload. If this page is embedded, open it in its own browser tab first.");
+        statusEl.textContent="Mic blocked";
+      } else if(lastError==="audio-capture"){
+        wantOn=false; locked=false;
+        notice("<b>No microphone found.</b> Check that an input device is connected and not held by another app.");
+        statusEl.textContent="No mic";
+      } else if(lastError==="network"){
+        statusEl.textContent="Network hiccup, retrying";
+      } else {
+        statusEl.textContent="Error: "+lastError;
+      }
+    };
+
+    r.onend=function(){
+      recording=false;
+      if(wantOn){
+        // browsers end the session on silence; restart to stay hands-free
+        try{ r.start(); return; }catch(err){ /* fall through to idle */ }
+      }
+      goIdle();
+    };
+    return r;
+  }
+
+  function goIdle(){
+    recording=false; wantOn=false; locked=false;
+    recBtn.classList.remove("live"); recBtn.setAttribute("aria-pressed","false");
+    timerEl.classList.remove("live");
+    stopTimer(); stopMeter();
+    caption.innerHTML='<span class="idle">Ready</span>';
+    if(!/blocked|No mic|Error/.test(statusEl.textContent)) statusEl.textContent="Idle";
+    for(var i=0;i<BARS;i++){ bars[i].style.height="12%"; bars[i].style.background="var(--line)"; }
+    if($("autocopy").checked && script.value.trim()) doCopy(true);
+  }
+
+  function startRec(lock){
+    if(!SR || recording || wantOn) return;
+    noticeEl.hidden=true;
+    locked=!!lock; wantOn=true;
+    rec=buildRec();
+    startTimer();
+    startMeter();
+    try{ rec.start(); }
+    catch(err){ wantOn=false; stopTimer(); statusEl.textContent="Could not start"; }
+  }
+  function stopRec(){
+    wantOn=false; locked=false;
+    if(rec){ try{ rec.stop(); }catch(err){} }
+    else goIdle();
+  }
+
+  /* ---------------- level meter ---------------- */
+  var ac=null, stream=null, analyser=null, raf=null, data=null;
+  function startMeter(){
+    if(isIOS) return;                      // iOS gives the mic to one consumer; leave it to recognition
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){
+      if(!wantOn){ s.getTracks().forEach(function(t){t.stop();}); return; }
+      stream=s;
+      ac = new (window.AudioContext||window.webkitAudioContext)();
+      var src=ac.createMediaStreamSource(s);
+      analyser=ac.createAnalyser();
+      analyser.fftSize=256; analyser.smoothingTimeConstant=.72;
+      src.connect(analyser);
+      data=new Uint8Array(analyser.frequencyBinCount);
+      draw();
+    }).catch(function(){ /* meter is cosmetic; recognition asks for its own permission */ });
+  }
+  function draw(){
+    if(!analyser) return;
+    analyser.getByteFrequencyData(data);
+    var step=Math.floor(data.length/BARS)||1;
+    for(var i=0;i<BARS;i++){
+      var v=data[i*step]/255;
+      var h=Math.max(12, Math.min(100, v*150));
+      bars[i].style.height=h+"%";
+      bars[i].style.background = h>62 ? "var(--burgundy)" : h>26 ? "var(--gold)" : "var(--line)";
+    }
+    raf=requestAnimationFrame(draw);
+  }
+  function stopMeter(){
+    if(raf) cancelAnimationFrame(raf); raf=null;
+    analyser=null; data=null;
+    if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; }
+    if(ac){ try{ ac.close(); }catch(e){} ac=null; }
+  }
+
+  /* ---------------- record controls ---------------- */
+  recBtn.addEventListener("click", function(){
+    if(recording || wantOn) stopRec(); else startRec(true);
+  });
+
+  document.addEventListener("keydown", function(e){
+    if(e.code!=="Space" || e.repeat) return;
+    var t=e.target;
+    if(t && (t.tagName==="TEXTAREA"||t.tagName==="INPUT"||t.tagName==="SELECT"||t.isContentEditable)) return;
+    e.preventDefault();
+    if(locked) return;
+    if(!recording && !wantOn){ held=true; startRec(false); }
+  });
+  document.addEventListener("keyup", function(e){
+    if(e.code!=="Space") return;
+    if(held){ held=false; if(!locked) stopRec(); }
+  });
+
+  /* ---------------- clipboard ---------------- */
+  function doCopy(quiet){
+    var text=script.value;
+    if(!text.trim()){ if(!quiet) toast("Nothing to copy"); return; }
+    var done=function(){ toast(quiet?"Copied on stop":"Copied"); };
+    var fail=function(){
+      try{
+        script.focus(); script.select();
+        var ok=document.execCommand("copy");
+        script.setSelectionRange(script.value.length, script.value.length);
+        if(ok) done(); else toast("Copy blocked, select the text and copy manually");
+      }catch(e){ toast("Copy blocked, select the text and copy manually"); }
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(fail);
+    } else fail();
+  }
+  $("copy").addEventListener("click", function(){ doCopy(false); });
+
+  $("clear").addEventListener("click", function(){
+    if(!script.value.trim()) return;
+    prevText=script.value; $("undo").disabled=false;
+    script.value=""; counts(); toast("Cleared, undo restores it");
+  });
+
+  /* ---------------- rewrite via Claude ---------------- */
+  var mode="clean", prevText=null, sampleFn=null, aborter=null;
+  var PROMPTS={
+    clean:"Fix punctuation, capitalisation and obvious speech-to-text mistakes. Remove filler words (um, uh, like, you know) and false starts. Keep the speaker's own words, voice and slang exactly as they are. Do not summarise and do not cut substance.",
+    notes:"Rewrite as tight bullet notes, grouped by topic. Keep every fact. No preamble.",
+    email:"Rewrite as the body of a professional email. Direct, plain language, no corporate filler, no hype. Do not add a subject line or a signature unless the speaker dictated one.",
+    message:"Rewrite as a short, natural text message. Casual, no formality, no greeting unless it was spoken.",
+    bars:"Format as lyric lines: one bar per line, grouped into verses at the natural breaks. Do not change, add or remove any words. Only line breaks and capitalisation."
+  };
+  var modesRow=$("modes");
+  modesRow.addEventListener("click", function(e){
+    var b=e.target.closest("[data-mode]"); if(!b) return;
+    mode=b.dataset.mode;
+    Array.prototype.forEach.call(modesRow.children, function(c){
+      c.setAttribute("aria-pressed", String(c===b));
+    });
+  });
+
+  $("undo").addEventListener("click", function(){
+    if(prevText===null) return;
+    var swap=script.value; script.value=prevText; prevText=swap;
+    counts(); toast("Reverted");
+  });
+
+  (async function(){
+    try{
+      sampleFn = window.claude && claude.use ? await claude.use("sample") : null;
+    }catch(e){ sampleFn=null; }
+    if(!sampleFn){
+      $("polish").disabled=true;
+      $("aiNote").textContent="Rewrite runs in the Claude-hosted copy of The Booth";
+    }
+  })();
+
+  $("polish").addEventListener("click", async function(){
+    var text=script.value.trim();
+    if(!text){ toast("Nothing to rewrite"); return; }
+    if(!sampleFn){ toast("Rewrite unavailable here"); return; }
+    var btn=this;
+    btn.disabled=true; var old=btn.textContent; btn.textContent="Working…";
+    $("aiNote").textContent="Thinking…";
+    prevText=text; $("undo").disabled=false;
+    aborter=new AbortController();
+    var prompt =
+      "You are a dictation cleanup engine. Return ONLY the rewritten text: no preamble, no quotes, no commentary, no markdown fences.\n" +
+      "Never invent facts, names, numbers or dates that are not in the input. Never use em dashes; use commas, colons or a plain hyphen.\n\n" +
+      "Task: " + PROMPTS[mode] + "\n\nInput:\n" + text.slice(0,50000);
+    try{
+      var out = await sampleFn(prompt, {
+        modelTier: mode==="bars" ? "quick" : "default",
+        cache:false,
+        signal:aborter.signal,
+        onText:function(u){ script.value=u.text; counts(); }
+      });
+      script.value=out.text.trim(); counts();
+      $("aiNote").textContent = out.truncated ? "Cut short, rewrite in smaller pieces" : "Rewritten, undo is available";
+    }catch(err){
+      var c=err&&err.code;
+      script.value = prevText; counts();
+      if(c==="not_granted"||c==="sampling_disabled"){ $("aiNote").textContent="Claude access not allowed for this page"; sampleFn=null; btn.disabled=true; }
+      else if(c==="rate_limited") $("aiNote").textContent="Rate limited, try again shortly";
+      else if(c==="cancelled") $("aiNote").textContent="Stopped";
+      else $("aiNote").textContent="Rewrite failed, text restored";
+    }finally{
+      btn.textContent=old; if(sampleFn) btn.disabled=false;
+    }
+  });
+
+  /* ---------------- text to speech ---------------- */
+  var synth=window.speechSynthesis, voices=[], speaking=false, queue=[], qi=0;
+  var voiceSel=$("voice"), rateEl=$("rate"), rateOut=$("rateOut");
+  var speakBtn=$("speak"), pauseBtn=$("pause"), stopBtn=$("stopSpeak");
+
+  if(!synth){
+    speakBtn.disabled=true; pauseBtn.disabled=true; stopBtn.disabled=true;
+    voiceSel.disabled=true;
+  }
+
+  function loadVoices(){
+    if(!synth) return;
+    voices=synth.getVoices()||[];
+    if(!voices.length) return;
+    var pref=(navigator.language||"en-US").slice(0,2);
+    voices.sort(function(a,b){
+      var as=(a.lang||"").slice(0,2)===pref?0:1, bs=(b.lang||"").slice(0,2)===pref?0:1;
+      return as-bs || (a.name<b.name?-1:1);
+    });
+    var keep=voiceSel.value;
+    voiceSel.innerHTML="";
+    voices.forEach(function(v,i){
+      var o=document.createElement("option");
+      o.value=String(i); o.textContent=v.name+" ("+v.lang+")";
+      voiceSel.appendChild(o);
+    });
+    if(keep && voiceSel.querySelector('option[value="'+keep+'"]')) voiceSel.value=keep;
+    try{ var s=localStorage.getItem("booth.voice"); if(s && voiceSel.querySelector('option[value="'+s+'"]')) voiceSel.value=s; }catch(e){}
+  }
+  if(synth){ loadVoices(); synth.addEventListener("voiceschanged", loadVoices); setTimeout(loadVoices,400); }
+  voiceSel.addEventListener("change", function(){ try{ localStorage.setItem("booth.voice", voiceSel.value); }catch(e){} });
+
+  rateEl.addEventListener("input", function(){
+    rateOut.textContent=Number(rateEl.value).toFixed(2)+"x";
+    try{ localStorage.setItem("booth.rate", rateEl.value); }catch(e){}
+  });
+  try{ var sr=localStorage.getItem("booth.rate"); if(sr){ rateEl.value=sr; rateOut.textContent=Number(sr).toFixed(2)+"x"; } }catch(e){}
+
+  function chunk(text){
+    // long utterances get cut off in several engines; split on sentences, cap the length
+    var parts=text.replace(/\s+/g," ").trim().match(/[^.!?…]+[.!?…]*\s*/g) || [text];
+    var out=[], buf="";
+    parts.forEach(function(p){
+      if((buf+p).length>180){ if(buf) out.push(buf.trim()); buf=p; }
+      else buf+=p;
+    });
+    if(buf.trim()) out.push(buf.trim());
+    return out;
+  }
+
+  function speakNext(){
+    if(qi>=queue.length){ endSpeak(); return; }
+    var u=new SpeechSynthesisUtterance(queue[qi]);
+    var v=voices[Number(voiceSel.value)];
+    if(v) { u.voice=v; u.lang=v.lang; }
+    u.rate=Number(rateEl.value)||1;
+    u.onend=function(){ qi++; speakNext(); };
+    u.onerror=function(){ qi++; speakNext(); };
+    synth.speak(u);
+  }
+  function endSpeak(){
+    speaking=false; queue=[]; qi=0;
+    speakBtn.textContent="Speak"; pauseBtn.disabled=true; stopBtn.disabled=true;
+    pauseBtn.textContent="Pause";
+  }
+  speakBtn.addEventListener("click", function(){
+    if(!synth) return;
+    var text=script.value.trim();
+    if(!text){ toast("Nothing to read"); return; }
+    try{ synth.cancel(); }catch(e){}
+    if(!voices.length) loadVoices();
+    queue=chunk(text); qi=0; speaking=true;
+    speakBtn.textContent="Restart"; pauseBtn.disabled=false; stopBtn.disabled=false;
+    speakNext();
+  });
+  pauseBtn.addEventListener("click", function(){
+    if(!synth||!speaking) return;
+    if(synth.paused){ synth.resume(); pauseBtn.textContent="Pause"; }
+    else { synth.pause(); pauseBtn.textContent="Resume"; }
+  });
+  stopBtn.addEventListener("click", function(){ try{ synth.cancel(); }catch(e){} endSpeak(); });
+  window.addEventListener("beforeunload", function(){ try{ synth && synth.cancel(); }catch(e){} });
+
+  /* ---------------- download ---------------- */
+  $("export").addEventListener("click", function(){
+    if(!script.value.trim()){ toast("Nothing to download"); return; }
+    var d=new Date(), pad=function(n){return String(n).padStart(2,"0");};
+    var name="booth-"+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"-"+pad(d.getHours())+pad(d.getMinutes())+".txt";
+    try{
+      var blob=new Blob([script.value],{type:"text/plain;charset=utf-8"});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement("a");
+      a.href=url; a.download=name; document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); },1000);
+    }catch(e){ toast("Download blocked by the browser"); }
+  });
+
+  /* ---------------- history ---------------- */
+  var db=null, logEl=$("log"), entries=[];
+  var LS="booth.history";
+
+  function readLocal(){
+    try{ return JSON.parse(localStorage.getItem(LS)||"[]"); }catch(e){ return []; }
+  }
+  function writeLocal(){
+    try{ localStorage.setItem(LS, JSON.stringify(entries.slice(0,50))); }catch(e){}
+  }
+  function when(ts){
+    var d=new Date(ts), n=new Date();
+    var same = d.toDateString()===n.toDateString();
+    var t=d.getHours()+":"+String(d.getMinutes()).padStart(2,"0");
+    return same ? t : d.toLocaleDateString(undefined,{month:"short",day:"numeric"})+" "+t;
+  }
+  function render(){
+    logEl.innerHTML="";
+    if(!entries.length){
+      var li=document.createElement("li");
+      li.className="empty"; li.style.border="0"; li.textContent="Nothing saved yet.";
+      logEl.appendChild(li); return;
+    }
+    entries.slice(0,50).forEach(function(en){
+      var li=document.createElement("li");
+      var b=document.createElement("button");
+      b.className="log-t";
+      b.textContent = en.text.length>150 ? en.text.slice(0,150)+"…" : en.text;
+      var s=document.createElement("small");
+      s.textContent = when(en.ts)+" · "+en.words+" words";
+      b.appendChild(s);
+      b.addEventListener("click", function(){
+        prevText=script.value; $("undo").disabled=false;
+        script.value=en.text; counts(); toast("Loaded into the transcript");
+        window.scrollTo({top:0,behavior:"smooth"});
+      });
+      var x=document.createElement("button");
+      x.className="log-x"; x.textContent="×"; x.title="Delete"; x.setAttribute("aria-label","Delete entry");
+      x.addEventListener("click", function(){ remove(en.id); });
+      li.appendChild(b); li.appendChild(x);
+      logEl.appendChild(li);
+    });
+  }
+  async function remove(id){
+    entries=entries.filter(function(e){ return e.id!==id; });
+    render(); writeLocal();
+    if(db){ try{ await db.doc("dictations/"+id).delete(); }catch(e){} }
+  }
+  $("save").addEventListener("click", async function(){
+    var text=script.value.trim();
+    if(!text){ toast("Nothing to save"); return; }
+    var en={ id:"d"+Date.now()+"-"+Math.random().toString(36).slice(2,7),
+             text:text, ts:Date.now(), words:text.split(/\s+/).length };
+    entries.unshift(en);
+    if(entries.length>50){
+      var drop=entries.slice(50); entries=entries.slice(0,50);
+      if(db) drop.forEach(function(d){ db.doc("dictations/"+d.id).delete().catch(function(){}); });
+    }
+    render(); writeLocal();
+    if(db){
+      try{ await db.doc("dictations/"+en.id).set({text:en.text, ts:en.ts, words:en.words}); toast("Saved, synced to your devices"); }
+      catch(e){ toast("Saved on this device"); }
+    } else toast("Saved on this device");
+  });
+
+  (async function(){
+    entries=readLocal(); render();
+    try{ db = window.claude && claude.use ? await claude.use("db") : null; }catch(e){ db=null; }
+    if(!db) return;
+    try{
+      var snap = await db.collection("dictations").orderBy("ts","desc").limit(50).get();
+      var remote = snap.docs.map(function(d){
+        var v=d.data()||{};
+        return { id:d.id, text:String(v.text||""), ts:Number(v.ts)||0, words:Number(v.words)||0 };
+      }).filter(function(e){ return e.text; });
+      var seen={};
+      entries = remote.concat(entries).filter(function(e){
+        if(seen[e.id]) return false; seen[e.id]=1; return true;
+      }).sort(function(a,b){ return b.ts-a.ts; }).slice(0,50);
+      render(); writeLocal();
+    }catch(e){ /* keep the local list */ }
+  })();
+
+  /* ---------------- keyboard shortcuts ---------------- */
+  document.addEventListener("keydown", function(e){
+    var meta=e.metaKey||e.ctrlKey;
+    if(!meta) return;
+    if(e.key==="Enter"){ e.preventDefault(); doCopy(false); }
+    else if(e.key.toLowerCase()==="k" && e.shiftKey){ e.preventDefault(); $("polish").click(); }
+  });
+
+})();
+</script>
+
+</body>
+</html>
