@@ -178,6 +178,7 @@
     font-family:var(--mono);font-size:11px;color:var(--ink-faint);
   }
   .footbar .sp{margin-left:auto}
+  #diag{color:var(--gold);opacity:.75;letter-spacing:.06em}
 
   /* ---------- controls ---------- */
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -290,6 +291,7 @@
 
     <div class="footbar">
       <span id="status">Idle</span>
+      <span id="diag"></span>
       <span class="sp"></span>
       <label class="tog"><input type="checkbox" id="autocopy" checked> Copy on stop</label>
     </div>
@@ -374,8 +376,25 @@
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var rec=null, recording=false, wantOn=false, held=false, locked=false;
   var startedAt=0, tick=null, lastError="";
+  var restarts=0, gotResult=false, watchdog=null, trace=[];
+
+  function diag(ev){
+    trace.push(ev); if(trace.length>6) trace.shift();
+    var d=document.getElementById("diag");
+    if(d) d.textContent=trace.join(" \u203a ");
+  }
+  function noWordsHelp(){
+    notice("<b>The microphone is open but no words are coming back.</b> " +
+      "On iPhone this feature runs on Apple's own dictation, and it stays silent when that is switched off. " +
+      "Open Settings, then General, then Keyboard, and turn on <b>Enable Dictation</b>. " +
+      "Come back to this page, reload it, and try again.");
+    statusEl.textContent="No words returned";
+  }
   var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
               (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+
+  var touchOnly = (navigator.maxTouchPoints||0) > 0 && !window.matchMedia("(pointer:fine)").matches;
+  if(touchOnly) hintEl.innerHTML="Tap the mic to start, tap it again to stop";
 
   if(!SR){
     engineEl.textContent="dictation unsupported in this browser";
@@ -417,13 +436,16 @@
 
   function buildRec(){
     var r=new SR();
-    r.continuous=true;
+    r.continuous=!isIOS;          // Safari returns nothing at all when continuous is on
     r.interimResults=true;
     r.lang=navigator.language||"en-US";
     r.maxAlternatives=1;
 
+    ["audiostart","soundstart","speechstart","speechend","soundend","audioend","nomatch"]
+      .forEach(function(ev){ r["on"+ev]=function(){ diag(ev); }; });
+
     r.onstart=function(){
-      recording=true; lastError="";
+      recording=true; lastError=""; diag("start");
       recBtn.classList.add("live"); recBtn.setAttribute("aria-pressed","true");
       timerEl.classList.add("live");
       statusEl.textContent = locked ? "Recording (locked)" : "Recording";
@@ -432,6 +454,7 @@
 
     r.onresult=function(e){
       var interim="";
+      gotResult=true; restarts=0; clearTimeout(watchdog);
       for(var i=e.resultIndex;i<e.results.length;i++){
         var res=e.results[i];
         if(res.isFinal) appendFinal(res[0].transcript);
@@ -442,7 +465,7 @@
     };
 
     r.onerror=function(e){
-      lastError=e.error||"unknown";
+      lastError=e.error||"unknown"; diag("err:"+lastError);
       if(lastError==="no-speech" || lastError==="aborted") return; // routine, onend restarts
       if(lastError==="not-allowed" || lastError==="service-not-allowed"){
         wantOn=false; locked=false;
@@ -460,10 +483,15 @@
     };
 
     r.onend=function(){
-      recording=false;
+      recording=false; diag("end");
       if(wantOn){
-        // browsers end the session on silence; restart to stay hands-free
-        try{ r.start(); return; }catch(err){ /* fall through to idle */ }
+        restarts++;
+        if(restarts>60 && !gotResult){ wantOn=false; goIdle(); noWordsHelp(); return; }
+        setTimeout(function(){
+          if(!wantOn){ goIdle(); return; }
+          try{ r.start(); }catch(err){ diag("restart-fail"); wantOn=false; goIdle(); }
+        }, 250);
+        return;
       }
       goIdle();
     };
@@ -485,6 +513,9 @@
     if(!SR || recording || wantOn) return;
     noticeEl.hidden=true;
     locked=!!lock; wantOn=true;
+    restarts=0; gotResult=false; trace=[];
+    clearTimeout(watchdog);
+    watchdog=setTimeout(function(){ if(wantOn && !gotResult) noWordsHelp(); }, 9000);
     rec=buildRec();
     startTimer();
     startMeter();
@@ -492,7 +523,7 @@
     catch(err){ wantOn=false; stopTimer(); statusEl.textContent="Could not start"; }
   }
   function stopRec(){
-    wantOn=false; locked=false;
+    wantOn=false; locked=false; clearTimeout(watchdog);
     if(rec){ try{ rec.stop(); }catch(err){} }
     else goIdle();
   }
