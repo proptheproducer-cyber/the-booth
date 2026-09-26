@@ -178,6 +178,9 @@
     font-family:var(--mono);font-size:11px;color:var(--ink-faint);
   }
   .footbar .sp{margin-left:auto}
+  .linkbtn{font-family:var(--mono);font-size:11px;color:var(--burgundy);text-decoration:underline;
+    text-underline-offset:3px;padding:0}
+  .linkbtn:hover{color:var(--gold)}
   #diag{color:var(--gold);opacity:.75;letter-spacing:.06em}
 
   /* ---------- controls ---------- */
@@ -295,6 +298,7 @@
       <span id="status">Idle</span>
       <span id="diag"></span>
       <span class="sp"></span>
+      <button class="linkbtn" id="clearPad">Clear pad</button>
       <label class="tog"><input type="checkbox" id="vcmd" checked> Spoken punctuation</label>
       <label class="tog"><input type="checkbox" id="autocopy" checked> Copy on stop</label>
     </div>
@@ -335,6 +339,35 @@
       <label class="tog">Speed <input type="range" id="rate" min="0.6" max="1.8" step="0.05" value="1"><span class="label" id="rateOut">1.00x</span></label>
     </div>
     <p class="help" id="voiceHelp"></p>
+  </div>
+
+  <div class="card">
+    <h2>Meeting</h2>
+    <div class="row">
+      <button class="btn primary" id="mrecBtn">Record meeting</button>
+      <span class="timer" id="mtime" style="font-size:15px">0:00</span>
+      <button class="btn" id="msum" disabled>Summarise</button>
+      <span class="label" id="mNote">Needs an API key</span>
+    </div>
+    <p class="help">Records the whole room, then transcribes it properly and writes you a summary
+    with decisions and action items. This one does not use the browser's engine, so it holds up over
+    an hour and gets names right. It needs your own API key, set below.</p>
+  </div>
+
+  <div class="card">
+    <h2>API key</h2>
+    <div class="row">
+      <input type="password" id="apikey" placeholder="sk-..." autocomplete="off" spellcheck="false" style="flex:1 1 260px;min-width:0">
+      <button class="btn primary" id="savekey">Save</button>
+      <button class="btn danger" id="dropkey">Remove</button>
+      <span class="label" id="keyNote"></span>
+    </div>
+    <p class="help">Get one at <b>platform.openai.com</b>, under API keys. The key is stored only in
+    this browser, on this device. It never reaches GitHub, never reaches me, and is sent straight
+    from your browser to OpenAI and nowhere else. Remove wipes it.</p>
+    <p class="help">A key turns on three things: <b>Meeting</b> above, <b>Rewrite</b> in the panel
+    higher up, and proper <b>voices</b> for read back that do not depend on what your device has
+    installed. You pay OpenAI directly for what you use.</p>
   </div>
 
   <div class="card">
@@ -416,7 +449,7 @@
                    ((navigator.maxTouchPoints||0)>0 && !window.matchMedia("(pointer:fine)").matches);
 
   var touchOnly = (navigator.maxTouchPoints||0) > 0 && !window.matchMedia("(pointer:fine)").matches;
-  if(touchOnly) hintEl.innerHTML="Tap the mic to start, tap it again to stop";
+  if(touchOnly) hintEl.innerHTML="Hold the mic to talk and let go to copy, or tap it once to lock it on";
 
   if(SR && (isSamsung || isFirefox)){
     notice((isSamsung ? "<b>Samsung Internet cannot do speech to text.</b> It opens the microphone and returns nothing, which is exactly the failure you are seeing."
@@ -612,9 +645,26 @@
   }
 
   /* ---------------- record controls ---------------- */
-  recBtn.addEventListener("click", function(){
-    if(recording || wantOn) stopRec(); else startRec(true);
+  var pressAt=0;
+  recBtn.addEventListener("pointerdown", function(e){
+    e.preventDefault();
+    if(recording || wantOn){ stopRec(); pressAt=0; return; }
+    pressAt=Date.now();
+    startRec(false);
+    try{ recBtn.setPointerCapture(e.pointerId); }catch(err){}
   });
+  function releaseTalk(){
+    if(!pressAt) return;
+    var heldFor=Date.now()-pressAt; pressAt=0;
+    if(heldFor<400){                      // quick tap: hands free until tapped again
+      locked=true; statusEl.textContent="Recording (locked)";
+    } else {                              // held down: push to talk, stop and copy on release
+      stopRec();
+    }
+  }
+  recBtn.addEventListener("pointerup", releaseTalk);
+  recBtn.addEventListener("pointercancel", releaseTalk);
+  recBtn.addEventListener("lostpointercapture", releaseTalk);
 
   document.addEventListener("keydown", function(e){
     if(e.code!=="Space" || e.repeat) return;
@@ -648,6 +698,7 @@
   }
   $("copy").addEventListener("click", function(){ doCopy(false); });
 
+  $("clearPad").addEventListener("click", function(){ $("clear").click(); });
   $("clear").addEventListener("click", function(){
     if(!script.value.trim()) return;
     prevText=script.value; $("undo").disabled=false;
@@ -708,7 +759,7 @@
     try{
       sampleFn = window.claude && claude.use ? await claude.use("sample") : null;
     }catch(e){ sampleFn=null; }
-    if(!sampleFn){
+    if(!sampleFn && !apiKey){
       $("polish").disabled=true;
       $("aiNote").textContent="Rewrite needs the paid engine. Tidy works now.";
     }
@@ -717,7 +768,7 @@
   $("polish").addEventListener("click", async function(){
     var text=script.value.trim();
     if(!text){ toast("Nothing to rewrite"); return; }
-    if(!sampleFn){ toast("Rewrite unavailable here"); return; }
+    if(!sampleFn && !apiKey){ toast("Rewrite needs an API key, or use Tidy"); return; }
     var btn=this;
     btn.disabled=true; var old=btn.textContent; btn.textContent="Working…";
     $("aiNote").textContent="Thinking…";
@@ -728,6 +779,13 @@
       "Never invent facts, names, numbers or dates that are not in the input. Never use em dashes; use commas, colons or a plain hyphen.\n\n" +
       "Task: " + PROMPTS[mode] + "\n\nInput:\n" + text.slice(0,50000);
     try{
+      if(!sampleFn){
+        var viaKey = await rewriteViaKey(prompt);
+        if(!viaKey) throw new Error("empty reply");
+        script.value=viaKey; counts();
+        $("aiNote").textContent="Rewritten, undo is available";
+        btn.textContent=old; btn.disabled=false; return;
+      }
       var out = await sampleFn(prompt, {
         modelTier: mode==="bars" ? "quick" : "default",
         cache:false,
@@ -742,9 +800,9 @@
       if(c==="not_granted"||c==="sampling_disabled"){ $("aiNote").textContent="Claude access not allowed for this page"; sampleFn=null; btn.disabled=true; }
       else if(c==="rate_limited") $("aiNote").textContent="Rate limited, try again shortly";
       else if(c==="cancelled") $("aiNote").textContent="Stopped";
-      else $("aiNote").textContent="Rewrite failed, text restored";
+      else $("aiNote").textContent = apiKey ? apiErr(err) : "Rewrite failed, text restored";
     }finally{
-      btn.textContent=old; if(sampleFn) btn.disabled=false;
+      btn.textContent=old; btn.disabled = !(sampleFn || apiKey);
     }
   });
 
@@ -808,7 +866,7 @@
   function refreshVoices(announce){
     if(!synth) return;
     var was=voices.length;
-    loadVoices(); voiceAdvice();
+    loadVoices(); voiceAdvice(); buildVoiceList();
     if(announce){
       toast(voices.length===was ? voices.length+" voices, nothing new found" : "Found "+(voices.length-was)+" new");
     }
@@ -856,9 +914,10 @@
     pauseBtn.textContent="Pause";
   }
   speakBtn.addEventListener("click", function(){
-    if(!synth) return;
     var text=script.value.trim();
     if(!text){ toast("Nothing to read"); return; }
+    if(/^oa:/.test(voiceSel.value)){ speakViaKey(text, voiceSel.value.slice(3)); return; }
+    if(!synth) return;
     try{ synth.cancel(); }catch(e){}
     if(!voices.length) loadVoices();
     queue=chunk(text); qi=0; speaking=true;
@@ -870,7 +929,10 @@
     if(synth.paused){ synth.resume(); pauseBtn.textContent="Pause"; }
     else { synth.pause(); pauseBtn.textContent="Resume"; }
   });
-  stopBtn.addEventListener("click", function(){ try{ synth.cancel(); }catch(e){} endSpeak(); });
+  stopBtn.addEventListener("click", function(){
+    if(oaAudio){ try{ oaAudio.pause(); }catch(e){} }
+    try{ synth && synth.cancel(); }catch(e){} endSpeak();
+  });
   window.addEventListener("beforeunload", function(){ try{ synth && synth.cancel(); }catch(e){} });
 
   /* ---------------- download ---------------- */
@@ -969,6 +1031,196 @@
       render(); writeLocal();
     }catch(e){ /* keep the local list */ }
   })();
+
+  /* ---------------- API key: stored on this device only ---------------- */
+  var KEY_LS="booth.openai.key", apiKey="";
+  try{ apiKey=localStorage.getItem(KEY_LS)||""; }catch(e){}
+
+  function keyState(){
+    var have=!!apiKey;
+    $("keyNote").textContent = have ? "Key saved on this device" : "No key saved";
+    $("apikey").placeholder = have ? "saved, hidden" : "sk-...";
+    $("msum").disabled = true;
+    $("mNote").textContent = have ? "Ready" : "Needs an API key";
+    if(have && !sampleFn){ $("polish").disabled=false; $("aiNote").textContent="Rewrite ready"; }
+    if(!have && !sampleFn){ $("polish").disabled=true; $("aiNote").textContent="Rewrite needs the paid engine. Tidy works now."; }
+    buildVoiceList();
+  }
+  $("savekey").addEventListener("click", function(){
+    var v=$("apikey").value.trim();
+    if(!v){ toast("Paste the key first"); return; }
+    apiKey=v; try{ localStorage.setItem(KEY_LS,v); }catch(e){}
+    $("apikey").value=""; keyState(); toast("Key saved on this device");
+  });
+  $("dropkey").addEventListener("click", function(){
+    apiKey=""; try{ localStorage.removeItem(KEY_LS); }catch(e){}
+    $("apikey").value=""; keyState(); toast("Key removed");
+  });
+
+  function apiErr(e){
+    var m = (e && e.message) ? e.message : String(e);
+    if(/401|invalid_api_key|Incorrect API key/i.test(m)) return "Key rejected. Check it on platform.openai.com.";
+    if(/429|quota|billing/i.test(m))                     return "Out of credit, or too many requests. Check billing on platform.openai.com.";
+    if(/Failed to fetch|NetworkError/i.test(m))          return "Could not reach OpenAI. Check your connection.";
+    return m.slice(0,160);
+  }
+  async function openai(path, init){
+    var r = await fetch("https://api.openai.com/v1/"+path, init);
+    if(!r.ok){
+      var detail="";
+      try{ var j=await r.json(); detail=(j.error&&j.error.message)||""; }catch(e2){}
+      throw new Error(r.status+" "+(detail||r.statusText));
+    }
+    return r;
+  }
+
+  /* ---------------- meeting: record, transcribe, summarise ---------------- */
+  var mrec=null, mchunks=[], mstream=null, mstart=0, mtick=null, meetingText="";
+
+  function mfmt(ms){ var t=Math.floor(ms/1000); return Math.floor(t/60)+":"+String(t%60).padStart(2,"0"); }
+
+  $("mrecBtn").addEventListener("click", async function(){
+    if(mrec && mrec.state!=="inactive"){ mrec.stop(); return; }
+    if(!apiKey){ notice("<b>Meeting recording needs an API key.</b> Add one in the panel below and this turns on."); return; }
+    if(!window.MediaRecorder){ toast("This browser cannot record audio"); return; }
+    if(recording||wantOn) stopRec();
+    try{
+      mstream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}});
+    }catch(e){ notice("<b>Microphone blocked.</b> Allow it for this page and try again."); return; }
+    var mime = ["audio/webm;codecs=opus","audio/webm","audio/mp4"].filter(function(t){
+      return window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t); })[0];
+    mchunks=[];
+    mrec = mime ? new MediaRecorder(mstream,{mimeType:mime, audioBitsPerSecond:32000})
+                : new MediaRecorder(mstream);
+    mrec.ondataavailable=function(e){ if(e.data && e.data.size) mchunks.push(e.data); };
+    mrec.onstop=function(){
+      clearInterval(mtick);
+      if(mstream){ mstream.getTracks().forEach(function(t){t.stop();}); mstream=null; }
+      $("mrecBtn").textContent="Record meeting";
+      $("mrecBtn").classList.remove("danger");
+      transcribeMeeting(new Blob(mchunks,{type:(mrec.mimeType||"audio/webm")}));
+    };
+    mrec.start(5000);
+    mstart=Date.now();
+    clearInterval(mtick);
+    mtick=setInterval(function(){ $("mtime").textContent=mfmt(Date.now()-mstart); },500);
+    $("mrecBtn").textContent="Stop and transcribe";
+    $("mrecBtn").classList.add("danger");
+    $("mNote").textContent="Recording";
+    noticeEl.hidden=true;
+  });
+
+  async function transcribeMeeting(blob){
+    var mb=(blob.size/1048576);
+    $("mNote").textContent="Transcribing "+mb.toFixed(1)+" MB, this takes a moment";
+    if(mb>24.5){
+      $("mNote").textContent="";
+      notice("<b>That recording is "+mb.toFixed(0)+" MB, over the 25 MB the transcriber accepts.</b> "+
+             "Record meetings in chunks of about an hour and a half and run them one at a time.");
+      return;
+    }
+    var ext = /mp4/.test(blob.type) ? "mp4" : "webm";
+    var fd=new FormData();
+    fd.append("file", blob, "meeting."+ext);
+    fd.append("model","whisper-1");
+    fd.append("response_format","text");
+    try{
+      var r = await openai("audio/transcriptions",{method:"POST",headers:{Authorization:"Bearer "+apiKey},body:fd});
+      var text=(await r.text()).trim();
+      if(!text){ $("mNote").textContent="Nothing audible in that recording"; return; }
+      meetingText=text;
+      prevText=script.value; $("undo").disabled=false;
+      script.value = (script.value ? script.value.replace(/\s*$/,"")+"\n\n" : "") + text;
+      counts(); script.scrollTop=script.scrollHeight;
+      $("msum").disabled=false;
+      $("mNote").textContent="Transcribed. Summarise turns it into notes.";
+      if($("autocopy").checked) doCopy(true);
+    }catch(e){
+      $("mNote").textContent="";
+      notice("<b>Transcription failed.</b> "+apiErr(e));
+    }
+  }
+
+  $("msum").addEventListener("click", async function(){
+    var src = meetingText || script.value.trim();
+    if(!src){ toast("Nothing to summarise"); return; }
+    var btn=this; btn.disabled=true; $("mNote").textContent="Writing the notes";
+    var ask =
+      "You are writing meeting notes from a raw transcript. Use only what is in the transcript. "+
+      "Never invent a name, number, date or commitment that is not there. Never use em dashes.\n\n"+
+      "Return exactly these sections as plain text with these headings:\n"+
+      "SUMMARY\nthree to six sentences.\n\n"+
+      "DECISIONS\nbullet each decision actually made, or write 'None recorded.'\n\n"+
+      "ACTION ITEMS\nbullet each one as: owner, the action, the due date if one was said. "+
+      "If no owner was named write 'Unassigned'.\n\n"+
+      "OPEN QUESTIONS\nbullet anything left unresolved, or write 'None recorded.'\n\n"+
+      "TRANSCRIPT:\n"+src.slice(0,120000);
+    try{
+      var r = await openai("chat/completions",{
+        method:"POST",
+        headers:{Authorization:"Bearer "+apiKey,"Content-Type":"application/json"},
+        body:JSON.stringify({model:"gpt-4o-mini", messages:[{role:"user",content:ask}], temperature:0.2})
+      });
+      var j=await r.json();
+      var out=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||"").trim();
+      if(!out) throw new Error("empty reply");
+      prevText=script.value; $("undo").disabled=false;
+      script.value=out; counts(); window.scrollTo({top:0,behavior:"smooth"});
+      $("mNote").textContent="Notes written. Undo brings the transcript back.";
+    }catch(e){
+      $("mNote").textContent="";
+      notice("<b>Could not write the notes.</b> "+apiErr(e));
+    }finally{ btn.disabled=false; }
+  });
+
+  /* ---------------- rewrite through the key when Claude is not there ---------------- */
+  async function rewriteViaKey(prompt){
+    var r = await openai("chat/completions",{
+      method:"POST",
+      headers:{Authorization:"Bearer "+apiKey,"Content-Type":"application/json"},
+      body:JSON.stringify({model:"gpt-4o-mini", messages:[{role:"user",content:prompt}], temperature:0.3})
+    });
+    var j=await r.json();
+    return (j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||"").trim();
+  }
+
+  /* ---------------- proper voices through the key ---------------- */
+  var OA_VOICES=["alloy","echo","fable","nova","onyx","shimmer"], oaAudio=null;
+  function buildVoiceList(){
+    if(!apiKey) return;
+    if(voiceSel.querySelector('option[value^="oa:"]')) return;
+    var g=document.createElement("optgroup"); g.label="OpenAI voices";
+    OA_VOICES.forEach(function(v){
+      var o=document.createElement("option");
+      o.value="oa:"+v; o.textContent=v.charAt(0).toUpperCase()+v.slice(1)+" · natural";
+      g.appendChild(o);
+    });
+    voiceSel.insertBefore(g, voiceSel.firstChild);
+  }
+  async function speakViaKey(text, voice){
+    stopBtn.disabled=false; pauseBtn.disabled=true;
+    speakBtn.textContent="Loading…";
+    try{
+      var r = await openai("audio/speech",{
+        method:"POST",
+        headers:{Authorization:"Bearer "+apiKey,"Content-Type":"application/json"},
+        body:JSON.stringify({model:"tts-1", voice:voice, input:text.slice(0,4000),
+                             speed:Math.max(0.25,Math.min(4,Number(rateEl.value)||1))})
+      });
+      var buf=await r.blob();
+      if(oaAudio){ oaAudio.pause(); URL.revokeObjectURL(oaAudio.src); }
+      oaAudio=new Audio(URL.createObjectURL(buf));
+      oaAudio.onended=function(){ speakBtn.textContent="Speak"; stopBtn.disabled=true; };
+      oaAudio.play();
+      speakBtn.textContent="Restart";
+      if(text.length>4000) toast("Read the first 4000 characters");
+    }catch(e){
+      speakBtn.textContent="Speak"; stopBtn.disabled=true;
+      notice("<b>Could not play that voice.</b> "+apiErr(e));
+    }
+  }
+
+  keyState();
 
   /* ---------------- keyboard shortcuts ---------------- */
   document.addEventListener("keydown", function(e){
